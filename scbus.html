@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>School Bus Detection System</title>
+
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background: black;
+            font-family: Arial, Helvetica, sans-serif;
+            overflow: hidden;
+        }
+
+        video {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+        }
+
+        /* Status box – RIGHT BOTTOM */
+        #statusBox {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.65);
+            color: white;
+            padding: 12px 18px;
+            border-radius: 10px;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .bus {
+            color: #ff3b3b;
+        }
+
+        .nobus {
+            color: #4caf50;
+        }
+
+        /* Legal warning – LEFT BOTTOM */
+        #legal {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            max-width: 380px;
+            background: rgba(0, 0, 0, 0.65);
+            color: #ddd;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+
+<body>
+
+<video id="video" autoplay playsinline></video>
+
+<div id="statusBox" class="nobus">
+    ✔️ No school bus detected
+</div>
+
+<div id="legal">
+    ⚠️ <strong>Safety Notice:</strong><br>
+    This system is a driver assistance tool only.  
+    The driver must always remain fully attentive to the road, traffic signs,
+    pedestrians, and surrounding vehicles.  
+    Do not rely solely on this system while driving.
+</div>
+
+<script>
+    const video = document.getElementById("video");
+    const statusBox = document.getElementById("statusBox");
+
+    const SERVER_URL = "http://127.0.0.1:8000/detect";
+    const beep = new Audio("beep.m4a");
+    beep.loop = true;
+
+    let busDetected = false;
+
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            video.srcObject = stream;
+        })
+        .catch(err => {
+            console.error(err);
+            statusBox.textContent = "❌ Camera access denied";
+        });
+
+    function captureFrameAndSend() {
+        if (video.videoWidth === 0) return;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        canvas.toBlob(async (blob) => {
+            const formData = new FormData();
+            formData.append("file", blob, "frame.jpg");
+
+            try {
+                const response = await fetch(SERVER_URL, {
+                    method: "POST",
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.bus) {
+                    if (!busDetected) beep.play();
+                    busDetected = true;
+                    statusBox.textContent = "🚨 Potential School Bus Detected";
+                    statusBox.className = "bus";
+                } else {
+                    if (busDetected) {
+                        beep.pause();
+                        beep.currentTime = 0;
+                    }
+                    busDetected = false;
+                    statusBox.textContent = "✔️ No school bus detected";
+                    statusBox.className = "nobus";
+                }
+
+            } catch (err) {
+                console.error(err);
+                statusBox.textContent = "❌ Server connection error";
+            }
+        }, "image/jpeg");
+    }
+
+    setInterval(captureFrameAndSend, 2000);
+</script>
+
+</body>
+</html>
