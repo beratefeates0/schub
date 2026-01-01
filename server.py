@@ -8,8 +8,9 @@ import os
 
 app = FastAPI()
 
-# Load YOLOv8 Nano - en hafif model
+# Model loading - Force CPU and pre-load
 model = YOLO("yolov8n.pt")
+model.to('cpu')  # Ensure it stays on CPU to save memory on Render
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,7 +34,7 @@ async def get_audio():
 @app.post("/detect")
 async def detect(file: UploadFile = File(...)):
     try:
-        # Hızlı okuma
+        # Fast reading
         file_bytes = await file.read()
         nparr = np.frombuffer(file_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -41,19 +42,20 @@ async def detect(file: UploadFile = File(...)):
         if img is None:
             return {"bus": False}
 
-        # Performans için: imgsz=320 ve conf=0.4 ayarlarıyla hızı maksimize et
-        results = model.predict(img, imgsz=320, conf=0.4, verbose=False)
+        # Maximized performance: imgsz=160 and lower precision for speed
+        results = model.predict(img, imgsz=160, conf=0.35, verbose=False)
         
         for r in results:
-            # Sadece bus (otobüs) sınıfı için kontrol (YOLO sınıf ID 5)
+            # YOLO Class ID 5 is 'bus'
             if 5 in r.boxes.cls.tolist():
                 return {"bus": True}
                     
         return {"bus": False}
-    except:
+    except Exception as e:
+        print(f"Error: {e}")
         return {"bus": False}
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)

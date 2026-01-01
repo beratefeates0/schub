@@ -6,7 +6,7 @@
     <style>
         html, body {
             margin: 0; padding: 0; height: 100%;
-            background: black; font-family: Arial, sans-serif;
+            background: black; font-family: 'Segoe UI', Arial, sans-serif;
             overflow: hidden;
         }
         video {
@@ -15,91 +15,117 @@
             z-index: 1;
         }
         #statusBox {
-            position: fixed; bottom: 20px; right: 20px;
-            background: rgba(0, 0, 0, 0.75); color: white;
-            padding: 12px 18px; border-radius: 10px;
-            font-size: 20px; font-weight: bold; z-index: 10;
+            position: fixed; bottom: 30px; right: 30px;
+            background: rgba(0, 0, 0, 0.8); color: white;
+            padding: 15px 25px; border-radius: 12px;
+            font-size: 22px; font-weight: bold; z-index: 10;
+            transition: all 0.3s ease;
         }
-        .bus { color: #ff3b3b; border: 2px solid #ff3b3b !important; }
-        .nobus { color: #4caf50; }
+        .bus { color: #ff3b3b; border: 3px solid #ff3b3b !important; box-shadow: 0 0 20px rgba(255, 59, 59, 0.5); }
+        .nobus { color: #4caf50; border: 1px solid rgba(255,255,255,0.2); }
         #legal {
-            position: fixed; bottom: 20px; left: 20px;
-            max-width: 380px; background: rgba(0, 0, 0, 0.65);
-            color: #ddd; padding: 10px 14px; border-radius: 8px;
-            font-size: 11px; line-height: 1.4; z-index: 10;
+            position: fixed; bottom: 30px; left: 30px;
+            max-width: 400px; background: rgba(0, 0, 0, 0.7);
+            color: #ccc; padding: 12px 18px; border-radius: 10px;
+            font-size: 12px; line-height: 1.5; z-index: 10;
         }
     </style>
 </head>
 <body>
 
 <video id="video" autoplay playsinline></video>
-<div id="statusBox" class="nobus">✔️ System Ready</div>
+<div id="statusBox" class="nobus">System Ready - Waiting for Camera...</div>
 
 <div id="legal">
     ⚠️ <strong>Safety Notice:</strong> Driver assistance tool only. 
-    Maintain full attention to the road at all times.
+    Maintain full attention to the road, traffic, and surroundings at all times.
 </div>
 
 <script>
     const video = document.getElementById("video");
     const statusBox = document.getElementById("statusBox");
-    const SERVER_URL = window.location.origin + "/detect";
     const beep = new Audio("/beep.m4a");
     beep.loop = true;
 
     let busDetected = false;
     let isProcessing = false;
 
+    // Direct path for stability
+    const SERVER_URL = "/detect";
+
     navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment", width: { ideal: 1280 } } 
+        video: { facingMode: "environment", width: { ideal: 640 } } 
     })
-    .then(stream => { video.srcObject = stream; })
-    .catch(err => { statusBox.textContent = "❌ Camera Error"; });
+    .then(stream => { 
+        video.srcObject = stream;
+        statusBox.textContent = "✔️ No school bus detected";
+    })
+    .catch(err => { 
+        statusBox.textContent = "❌ Camera Access Denied"; 
+    });
 
     async function captureFrameAndSend() {
-       
         if (video.videoWidth === 0 || isProcessing) return;
         
         isProcessing = true;
 
-       
         const canvas = document.createElement("canvas");
-        const scale = 640 / video.videoWidth; 
-        canvas.width = 640;
-        canvas.height = video.videoHeight * scale;
+        // Lower resolution for ultra-fast network transfer
+        canvas.width = 320; 
+        canvas.height = (video.videoHeight / video.videoWidth) * 320;
 
         const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
         canvas.toBlob(async (blob) => {
             const formData = new FormData();
-            formData.append("file", blob, "f.jpg");
+            formData.append("file", blob, "check.jpg");
 
             try {
-                const response = await fetch(SERVER_URL, { method: "POST", body: formData });
+                const response = await fetch(SERVER_URL, { 
+                    method: "POST", 
+                    body: formData 
+                });
+                
+                if (!response.ok) throw new Error("Network response was not ok");
+                
                 const result = await response.json();
 
                 if (result.bus) {
-                    if (!busDetected) beep.play().catch(() => {});
+                    if (!busDetected) {
+                        beep.play().catch(() => console.log("User interaction needed for sound"));
+                    }
                     busDetected = true;
-                    statusBox.textContent = "🚨 BUS DETECTED";
+                    statusBox.textContent = "🚨 Potential school bus detected";
                     statusBox.className = "bus";
                 } else {
-                    if (busDetected) { beep.pause(); beep.currentTime = 0; }
+                    if (busDetected) {
+                        beep.pause();
+                        beep.currentTime = 0;
+                    }
                     busDetected = false;
-                    statusBox.textContent = "✔️ Clear";
+                    statusBox.textContent = "✔️ No school bus detected";
                     statusBox.className = "nobus";
                 }
             } catch (err) {
-                console.error(err);
+                console.error("Detection error:", err);
+                // Don't change status to error immediately to prevent flickering during minor lag
             } finally {
                 isProcessing = false; 
             }
-        }, "image/jpeg", 0.5); // lower quality
+        }, "image/jpeg", 0.4); // Quality 0.4 for smallest size
     }
 
-    setInterval(captureFrameAndSend, 1000); 
-    document.body.addEventListener('click', () => { beep.load(); }, { once: true });
+    // Faster interval for more responsive alerts
+    setInterval(captureFrameAndSend, 800); 
+
+    document.body.addEventListener('click', () => {
+        beep.play().then(() => {
+            beep.pause();
+            beep.currentTime = 0;
+            console.log("Audio unlocked");
+        }).catch(() => {});
+    }, { once: true });
 </script>
 </body>
 </html>
