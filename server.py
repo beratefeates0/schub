@@ -8,72 +8,51 @@ import os
 
 app = FastAPI()
 
-# 1. Load YOLO Model
-# Ensure the model file is in the root directory
-model_path = "yolov8n.pt"
-if os.path.exists(model_path):
-    model = YOLO(model_path)
-else:
-    print(f"WARNING: {model_path} not found!")
+# Load YOLOv8 Nano - en hafif model
+model = YOLO("yolov8n.pt")
 
-# 2. CORS Settings
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 3. Main Page (Serve HTML)
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    html_path = "scbus.html"
-    if os.path.exists(html_path):
-        return FileResponse(html_path)
-    return """
-    <html>
-        <body style="background: black; color: white; text-align: center; padding: 50px; font-family: sans-serif;">
-            <h1>❌ scbus.html file not found!</h1>
-            <p>Please ensure the file is in the root directory (same level as server.py).</p>
-        </body>
-    </html>
-    """
+    if os.path.exists("scbus.html"):
+        return FileResponse("scbus.html")
+    return "HTML file not found"
 
-# 4. Serve Audio File
 @app.get("/beep.m4a")
 async def get_audio():
-    audio_path = "beep.m4a"
-    if os.path.exists(audio_path):
-        return FileResponse(audio_path)
-    return {"error": "Audio file not found"}
+    if os.path.exists("beep.m4a"):
+        return FileResponse("beep.m4a")
+    return {"error": "Audio not found"}
 
-# 5. Detection Algorithm (Detect Endpoint)
 @app.post("/detect")
 async def detect(file: UploadFile = File(...)):
     try:
-        image_bytes = await file.read()
-        npimg = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
+        # Hızlı okuma
+        file_bytes = await file.read()
+        nparr = np.frombuffer(file_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if img is None:
-            return {"error": "Image could not be decoded", "bus": False}
+            return {"bus": False}
 
-        results = model(img)
+        # Performans için: imgsz=320 ve conf=0.4 ayarlarıyla hızı maksimize et
+        results = model.predict(img, imgsz=320, conf=0.4, verbose=False)
         
         for r in results:
-            for box in r.boxes:
-                cls = int(box.cls[0])
-                label = model.names[cls]
-                # Detecting 'bus' class
-                if "bus" in label.lower():
-                    return {"bus": True}
+            # Sadece bus (otobüs) sınıfı için kontrol (YOLO sınıf ID 5)
+            if 5 in r.boxes.cls.tolist():
+                return {"bus": True}
                     
         return {"bus": False}
-    except Exception as e:
-        return {"error": str(e), "bus": False}
+    except:
+        return {"bus": False}
 
-# Port configuration for Render
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))

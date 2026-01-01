@@ -5,163 +5,101 @@
     <title>School Bus Detection System</title>
     <style>
         html, body {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            background: black;
-            font-family: Arial, Helvetica, sans-serif;
+            margin: 0; padding: 0; height: 100%;
+            background: black; font-family: Arial, sans-serif;
             overflow: hidden;
         }
-
         video {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            object-fit: cover;
+            position: fixed; top: 0; left: 0;
+            width: 100vw; height: 100vh; object-fit: cover;
             z-index: 1;
         }
-
-        /* Status box – RIGHT BOTTOM */
         #statusBox {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.75);
-            color: white;
-            padding: 12px 18px;
-            border-radius: 10px;
-            font-size: 20px;
-            font-weight: bold;
-            z-index: 10;
-            border: 1px solid rgba(255,255,255,0.1);
+            position: fixed; bottom: 20px; right: 20px;
+            background: rgba(0, 0, 0, 0.75); color: white;
+            padding: 12px 18px; border-radius: 10px;
+            font-size: 20px; font-weight: bold; z-index: 10;
         }
-
-        .bus {
-            color: #ff3b3b;
-            border: 2px solid #ff3b3b !important;
-        }
-
-        .nobus {
-            color: #4caf50;
-        }
-
-        /* Legal warning – LEFT BOTTOM */
+        .bus { color: #ff3b3b; border: 2px solid #ff3b3b !important; }
+        .nobus { color: #4caf50; }
         #legal {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            max-width: 380px;
-            background: rgba(0, 0, 0, 0.65);
-            color: #ddd;
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-size: 12px;
-            line-height: 1.4;
-            z-index: 10;
+            position: fixed; bottom: 20px; left: 20px;
+            max-width: 380px; background: rgba(0, 0, 0, 0.65);
+            color: #ddd; padding: 10px 14px; border-radius: 8px;
+            font-size: 11px; line-height: 1.4; z-index: 10;
         }
     </style>
 </head>
-
 <body>
 
 <video id="video" autoplay playsinline></video>
-
-<div id="statusBox" class="nobus">
-    ✔️ No school bus detected
-</div>
+<div id="statusBox" class="nobus">✔️ System Ready</div>
 
 <div id="legal">
-    ⚠️ <strong>Safety Notice:</strong><br>
-    This system is a driver assistance tool only.  
-    The driver must always remain fully attentive to the road. 
-    Do not rely solely on this system while driving.
+    ⚠️ <strong>Safety Notice:</strong> Driver assistance tool only. 
+    Maintain full attention to the road at all times.
 </div>
 
 <script>
     const video = document.getElementById("video");
     const statusBox = document.getElementById("statusBox");
-
-    // Dynamic URL for Render
     const SERVER_URL = window.location.origin + "/detect";
     const beep = new Audio("/beep.m4a");
     beep.loop = true;
 
     let busDetected = false;
+    let isProcessing = false;
 
-    // Use environment camera (back camera) for mobile devices
     navigator.mediaDevices.getUserMedia({ 
-        video: { 
-            facingMode: "environment",
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-        } 
+        video: { facingMode: "environment", width: { ideal: 1280 } } 
     })
-    .then(stream => {
-        video.srcObject = stream;
-    })
-    .catch(err => {
-        console.error(err);
-        statusBox.textContent = "❌ Camera access denied";
-    });
+    .then(stream => { video.srcObject = stream; })
+    .catch(err => { statusBox.textContent = "❌ Camera Error"; });
 
-    function captureFrameAndSend() {
-        if (video.videoWidth === 0) return;
+    async function captureFrameAndSend() {
+       
+        if (video.videoWidth === 0 || isProcessing) return;
+        
+        isProcessing = true;
 
-        // Canvas matches video's original full resolution
+       
         const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        const scale = 640 / video.videoWidth; 
+        canvas.width = 640;
+        canvas.height = video.videoHeight * scale;
 
         const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
         canvas.toBlob(async (blob) => {
             const formData = new FormData();
-            formData.append("file", blob, "frame.jpg");
+            formData.append("file", blob, "f.jpg");
 
             try {
-                const response = await fetch(SERVER_URL, {
-                    method: "POST",
-                    body: formData
-                });
-
+                const response = await fetch(SERVER_URL, { method: "POST", body: formData });
                 const result = await response.json();
 
                 if (result.bus) {
-                    if (!busDetected) {
-                        // Browser requires user interaction to play audio
-                        beep.play().catch(err => console.log("Waiting for user interaction for audio."));
-                    }
+                    if (!busDetected) beep.play().catch(() => {});
                     busDetected = true;
-                    statusBox.textContent = "🚨 Potential School Bus";
+                    statusBox.textContent = "🚨 BUS DETECTED";
                     statusBox.className = "bus";
                 } else {
-                    if (busDetected) {
-                        beep.pause();
-                        beep.currentTime = 0;
-                    }
+                    if (busDetected) { beep.pause(); beep.currentTime = 0; }
                     busDetected = false;
-                    statusBox.textContent = "✔️ No school bus detected";
+                    statusBox.textContent = "✔️ Clear";
                     statusBox.className = "nobus";
                 }
-
             } catch (err) {
                 console.error(err);
-                statusBox.textContent = "❌ Server connection error";
+            } finally {
+                isProcessing = false; 
             }
-        }, "image/jpeg", 0.9); // High quality
+        }, "image/jpeg", 0.5); // lower quality
     }
 
-    // Capture and send frame every 2 seconds
-    setInterval(captureFrameAndSend, 2000);
-
-    // Initial click listener to enable audio on mobile browsers
-    document.body.addEventListener('click', () => {
-        console.log("Audio ready");
-    }, { once: true });
+    setInterval(captureFrameAndSend, 1000); 
+    document.body.addEventListener('click', () => { beep.load(); }, { once: true });
 </script>
-
 </body>
 </html>
