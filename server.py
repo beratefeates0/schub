@@ -1,12 +1,17 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from ultralytics import YOLO
 import cv2
 import numpy as np
 
 app = FastAPI()
+
+# YOLO modeli
 model = YOLO("yolov8n.pt")
 
+# CORS ayarları
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,9 +20,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-async def root():
-    return {"message": "School Bus Detector API is running. Use /detect endpoint to send images."}
+# HTML'yi sunmak için static klasörü
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root():
+    with open("static/scbus.html", "r", encoding="utf-8") as f:
+        return f.read()
 
 @app.post("/detect")
 async def detect(file: UploadFile = File(...)):
@@ -33,5 +42,4 @@ async def detect(file: UploadFile = File(...)):
             label = model.names[cls]
             if "bus" in label.lower():
                 return {"bus": True}
-    
     return {"bus": False}
