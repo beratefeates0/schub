@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>School Bus Detection System</title>
-<h1>HTML IS WORKING</h1>
     <style>
         html, body {
             margin: 0;
@@ -21,6 +20,7 @@
             width: 100vw;
             height: 100vh;
             object-fit: cover;
+            z-index: 1;
         }
 
         /* Status box – RIGHT BOTTOM */
@@ -28,16 +28,19 @@
             position: fixed;
             bottom: 20px;
             right: 20px;
-            background: rgba(0, 0, 0, 0.65);
+            background: rgba(0, 0, 0, 0.75);
             color: white;
             padding: 12px 18px;
             border-radius: 10px;
             font-size: 20px;
             font-weight: bold;
+            z-index: 10;
+            border: 1px solid rgba(255,255,255,0.1);
         }
 
         .bus {
             color: #ff3b3b;
+            border: 2px solid #ff3b3b !important;
         }
 
         .nobus {
@@ -56,6 +59,7 @@
             border-radius: 8px;
             font-size: 12px;
             line-height: 1.4;
+            z-index: 10;
         }
     </style>
 </head>
@@ -71,8 +75,7 @@
 <div id="legal">
     ⚠️ <strong>Safety Notice:</strong><br>
     This system is a driver assistance tool only.  
-    The driver must always remain fully attentive to the road, traffic signs,
-    pedestrians, and surrounding vehicles.  
+    The driver must always remain fully attentive to the road. 
     Do not rely solely on this system while driving.
 </div>
 
@@ -80,24 +83,33 @@
     const video = document.getElementById("video");
     const statusBox = document.getElementById("statusBox");
 
-    const SERVER_URL = "https://school-bus-detector.onrender.com/detect";
-    const beep = new Audio("beep.m4a");
+    // Dynamic URL for Render
+    const SERVER_URL = window.location.origin + "/detect";
+    const beep = new Audio("/beep.m4a");
     beep.loop = true;
 
     let busDetected = false;
 
-    navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => {
-            video.srcObject = stream;
-        })
-        .catch(err => {
-            console.error(err);
-            statusBox.textContent = "❌ Camera access denied";
-        });
+    // Use environment camera (back camera) for mobile devices
+    navigator.mediaDevices.getUserMedia({ 
+        video: { 
+            facingMode: "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+        } 
+    })
+    .then(stream => {
+        video.srcObject = stream;
+    })
+    .catch(err => {
+        console.error(err);
+        statusBox.textContent = "❌ Camera access denied";
+    });
 
     function captureFrameAndSend() {
         if (video.videoWidth === 0) return;
 
+        // Canvas matches video's original full resolution
         const canvas = document.createElement("canvas");
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -118,7 +130,10 @@
                 const result = await response.json();
 
                 if (result.bus) {
-                    if (!busDetected) beep.play();
+                    if (!busDetected) {
+                        // Browser requires user interaction to play audio
+                        beep.play().catch(err => console.log("Waiting for user interaction for audio."));
+                    }
                     busDetected = true;
                     statusBox.textContent = "🚨 Potential School Bus";
                     statusBox.className = "bus";
@@ -136,10 +151,16 @@
                 console.error(err);
                 statusBox.textContent = "❌ Server connection error";
             }
-        }, "image/jpeg");
+        }, "image/jpeg", 0.9); // High quality
     }
 
+    // Capture and send frame every 2 seconds
     setInterval(captureFrameAndSend, 2000);
+
+    // Initial click listener to enable audio on mobile browsers
+    document.body.addEventListener('click', () => {
+        console.log("Audio ready");
+    }, { once: true });
 </script>
 
 </body>
